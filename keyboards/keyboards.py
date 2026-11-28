@@ -6,7 +6,7 @@ from aiogram.types import (
 )
 from database.db import WORK_DAYS, WORK_TIMES, get_services
 
-def get_main_reply_keyboard():
+async def get_main_reply_keyboard():
     Keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Записаться")],
@@ -62,18 +62,26 @@ async def confirm_keyboard():
 async def get_control_appointment_inline_keyboard():
     keyboard = InlineKeyboardMarkup(
         inline_keyboard = [
-            [InlineKeyboardButton(text="Отменить запись", callback_data = "del_appt")],
-            [InlineKeyboardButton(text="Перенести", callback_data = "move_appt")]
+            [InlineKeyboardButton(text="Отменить запись", callback_data = "cancel")],
+            [InlineKeyboardButton(text="Перенести", callback_data = "move")]
         ]
     )
+    return keyboard
+
+async def get_back_to_appts_keyboard():
+    keyboard = InlineKeyboardMarkup(
+            inline_keyboard = [
+                [InlineKeyboardButton(text="Вернуться", callback_data = "Мои записи")],
+            ]
+        )
     return keyboard
 
 async def get_appointments_list_inline_keyboard(appts, action):
     k = []
 
-    for i, appt in enumerate(1, appts):
+    for i, appt in enumerate(appts, start=1):
 
-        k.append(InlineKeyboardButton(text=f"Запись {i}", callback_data=f"{action}:{appt["created_at"]}"))
+        k.append([InlineKeyboardButton(text=f"Запись №{i}", callback_data=f"{action}:{appt["id"]}")])
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=k

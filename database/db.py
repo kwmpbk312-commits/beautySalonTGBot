@@ -40,52 +40,75 @@ async def close_pool():
 
 async def get_services():
     async with pool.acquire() as conn:
-        return await conn.fetch('''
-        SELECT id, name, price FROM services
-        WHERE is_active ORDER BY name
+        row = await conn.fetch('''
+            SELECT id, name, price FROM services
+            WHERE is_active ORDER BY name
         ''')
+        return row
 
 async def get_service(service_id):
     async with pool.acquire() as conn:
         return await conn.fetchrow('''
-            SELECT id, name, price FROM services WHERE id = $1
+            SELECT id, name, price FROM services WHERE id = $1 AND is_active
             ''', service_id, 
             )
 
-async def upsert_user(telegram_id, name, phone):
+async def upsert_user(telegram_id, role):
+    async with pool.acquire() as conn:
+        return await conn.fetchrow(
+            '''
+            INSERT INTO users (telegram_id, role)
+            VALUES ($1, $2)
+            ON CONFLICT (telegram_id) DO UPDATE SET role = EXCLUDED.role
+            RETURNING id
+            ''',
+            telegram_id, role, 
+        )
+
+async def create_appointment(user_id, service_id, appt_date, appt_time, name, phone_number):
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             '''
-            INSERT INTO users (telegram_id, name, phone)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (telegram_id) DO UPDATE
-                SET name = EXCLUDED.name,
-                    phone = EXCLUDED.phone
+            INSERT INTO appointments 
+            (user_id, service_id, appt_date, appt_time, price_at_booking, name, phone_number)
+            SELECT $1, s.id, $2, $3, s.price, $5, $6
+            FROM services s
+            WHERE s.id = $4 AND s.is_active
             RETURNING id
             ''',
-            telegram_id, name, phone, 
+            user_id, appt_date, appt_time, service_id, name, phone_number,
         )
+        if row is None:
+            return None
         return row["id"]
 
-async def create_appointment(user_id, service_id, appt_date, appt_time):
+async def get_user_id(telegram_id):
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             '''
-            INSERT INTO appointments (user_id, service_id, appt_date, appt_time, price_at_booking)
-            SELECT $1, s.id, $2, $3, s.price
-            FROM services s
-            WHERE s.id = $4
+            SELECT id FROM users
+            WHERE telegram_id = $1
+            ''',
+            telegram_id
+        )
+        return row["id"] if row else None
+
+async def delete_appointment(id, user_id):
+    async with pool.acquire() as conn:
+        row = await conn.fetch('''
+            DELETE FROM appointments 
+            WHERE id = $1 AND user_id = $2
             RETURNING id
             ''',
-            user_id, appt_date, appt_time, service_id,
+            id, user_id,
         )
-        return row["id"]
+        return row
 
 async def get_user_appointments(user_id):
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             '''
-            SELECT service, appt_date, appt_time, price FROM appointments
+            SELECT id, service_id, appt_date, appt_time, price_at_booking, name, phone_number FROM appointments
             WHERE user_id = $1
             ORDER BY appt_date
             ''', user_id, 
